@@ -1,0 +1,217 @@
+/* Pure black base: pixels are off on the OLED panel. */
+:root {
+  --fg: #ffffff;
+  --muted: rgba(255, 255, 255, 0.62);
+  --faint: rgba(255, 255, 255, 0.18);
+  --accent: #1ed760;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Views set display:flex/grid, which would override the hidden attribute. */
+[hidden] { display: none !important; }
+
+html, body {
+  height: 100%;
+  background: #000;
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ---------- background modes (cycled by double tap) ---------- */
+#backdrop {
+  position: fixed;
+  inset: -10%;
+  background-size: cover;
+  background-position: center;
+  filter: blur(60px) saturate(1.4) brightness(0.45);
+  opacity: 0;
+  transition: opacity 0.8s ease;
+  z-index: 0;
+  pointer-events: none;
+}
+/* Only the blur mode shows the album-art backdrop. */
+body:not(.mode-blur) #backdrop { display: none; }
+#backdrop.on { opacity: 1; }
+
+body.mode-grey { --accent: rgba(255, 255, 255, 0.85); }
+body.mode-grey #art { filter: grayscale(1); }
+
+/* ---------- setup / login panels ---------- */
+.panel {
+  position: relative;
+  z-index: 1;
+  max-width: 420px;
+  margin: 0 auto;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px 16px;
+}
+.panel h1 { font-size: 28px; font-weight: 700; }
+.panel p { color: var(--muted); line-height: 1.45; }
+.panel .hint { font-size: 14px; }
+.panel code {
+  color: var(--fg);
+  word-break: break-all;
+  user-select: all;
+}
+.panel input {
+  width: 100%;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--faint);
+  background: #111;
+  color: var(--fg);
+  font: inherit;
+}
+.panel button {
+  padding: 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #000;
+  font: inherit;
+  font-weight: 700;
+}
+.panel button.link {
+  background: none;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* ---------- player ---------- */
+#player {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+}
+
+.art-wrap {
+  position: relative;
+  width: min(84vw, 52vh);
+  aspect-ratio: 1;
+  flex-shrink: 0;
+}
+#art, #art-empty {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 14px;
+}
+#art {
+  object-fit: cover;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+#art.on { opacity: 1; }
+#art-empty {
+  display: grid;
+  place-items: center;
+  font-size: 96px;
+  color: var(--faint);
+  background: #0a0a0a;
+}
+
+.meta {
+  width: min(84vw, 520px);
+  text-align: center;
+}
+.status {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  min-height: 1.2em;
+  margin-bottom: 8px;
+}
+.status.paused { color: var(--muted); }
+#title {
+  font-size: clamp(22px, 6vw, 34px);
+  font-weight: 700;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+#artist {
+  margin-top: 6px;
+  font-size: clamp(16px, 4.4vw, 20px);
+  font-weight: 500;
+  color: var(--muted);
+}
+#album {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--muted);
+  opacity: 0.8;
+}
+#artist, #album {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.progress { margin-top: 24px; }
+.bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--faint);
+  overflow: hidden;
+}
+#bar-fill {
+  height: 100%;
+  width: 0;
+  background: var(--fg);
+  border-radius: 2px;
+}
+.times {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.device {
+  margin-top: 18px;
+  font-size: 13px;
+  color: var(--accent);
+  min-height: 1.2em;
+}
+
+/* Landscape: art left, text right */
+@media (orientation: landscape) {
+  #player { flex-direction: row; gap: 48px; }
+  .art-wrap { width: min(70vh, 44vw); }
+  .meta { text-align: left; width: min(44vw, 520px); }
+}
+
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 2;
+  max-width: calc(100% - 32px);
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: #222;
+  color: var(--fg);
+  font-size: 14px;
+}

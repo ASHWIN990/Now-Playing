@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>Now Playing</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css?v=4">
+</head>
+<body>
+  <div id="backdrop"></div>
+
+  <!-- First run: ask for the Spotify Client ID -->
+  <section id="setup" class="panel" hidden>
+    <h1>Now Playing</h1>
+    <p>Paste the <b>Client ID</b> of your Spotify developer app.</p>
+    <p class="hint">Redirect URI to register in the Spotify dashboard:<br><code id="redirect-uri"></code></p>
+    <input id="client-id" type="text" placeholder="Client ID" autocomplete="off" spellcheck="false">
+    <button id="save-client">Save &amp; connect</button>
+  </section>
+
+  <!-- Has a Client ID but no token -->
+  <section id="login" class="panel" hidden>
+    <h1>Now Playing</h1>
+    <p>Connect your Spotify account to see what's playing.</p>
+    <button id="connect">Connect Spotify</button>
+    <button id="reset" class="link">Change Client ID</button>
+  </section>
+
+  <!-- Main view -->
+  <main id="player" hidden>
+    <div class="art-wrap">
+      <img id="art" alt="">
+      <div id="art-empty">♪</div>
+    </div>
+    <div class="meta">
+      <div id="status" class="status"></div>
+      <h1 id="title">Nothing playing</h1>
+      <h2 id="artist"></h2>
+      <h3 id="album"></h3>
+      <div class="progress">
+        <div class="bar"><div id="bar-fill"></div></div>
+        <div class="times"><span id="pos">0:00</span><span id="dur">0:00</span></div>
+      </div>
+      <div id="device" class="device"></div>
+    </div>
+  </main>
+
+  <div id="toast" hidden></div>
+  <script src="app.js?v=4"></script>
+</body>
+</html>
