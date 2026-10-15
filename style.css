@@ -23,6 +23,9 @@ html, body {
   touch-action: manipulation;
 }
 
+/* Hide the pointer after a few idle seconds (desktop, TV remotes). */
+body.cursor-idle, body.cursor-idle * { cursor: none !important; }
+
 /* ---------- background modes (cycled by double tap) ---------- */
 #backdrop {
   position: fixed;

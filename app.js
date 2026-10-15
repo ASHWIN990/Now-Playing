@@ -478,6 +478,17 @@ $('reset').addEventListener('click', () => {
 
 if (!store.get('client_id')) store.set('client_id', DEFAULT_CLIENT_ID);
 
+// Hide the cursor after 3 s without pointer movement; show it again on move.
+const CURSOR_IDLE_MS = 3000;
+let cursorTimer = null;
+function wakeCursor() {
+  document.body.classList.remove('cursor-idle');
+  clearTimeout(cursorTimer);
+  cursorTimer = setTimeout(() => document.body.classList.add('cursor-idle'), CURSOR_IDLE_MS);
+}
+['mousemove', 'pointermove', 'keydown'].forEach((ev) => document.addEventListener(ev, wakeCursor));
+wakeCursor();
+
 setInterval(tick, 250);
 
 (async () => {
