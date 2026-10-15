@@ -6,7 +6,8 @@ const SCOPES = 'user-read-currently-playing user-read-playback-state';
 const POLL_MS = 3000;
 // Client ID of the user's Spotify developer app (public; no secret needed with PKCE).
 const DEFAULT_CLIENT_ID = 'c63c46b7f118408aa242c93d13cb32ac';
-const REDIRECT_URI = location.origin + location.pathname;
+// Normalise so /index.html and / both use the same registered redirect URI.
+const REDIRECT_URI = location.origin + location.pathname.replace(/index\.html$/, '');
 
 const $ = (id) => document.getElementById(id);
 
@@ -112,7 +113,12 @@ async function fetchPlayback() {
     const wait = Number(res.headers.get('Retry-After') || 5);
     throw Object.assign(new Error('rate limited'), { retryAfter: wait * 1000 });
   }
-  if (!res.ok) throw new Error('Spotify API ' + res.status);
+  if (!res.ok) {
+    // Surface Spotify's reason (e.g. a 403 for a user not added to a development-mode app).
+    let reason = '';
+    try { reason = (await res.json()).error?.message || ''; } catch {}
+    throw new Error('Spotify API ' + res.status + (reason ? ': ' + reason : ''));
+  }
   return res.json();
 }
 
