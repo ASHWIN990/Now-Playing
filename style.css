@@ -19,6 +19,8 @@ html, body {
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
   user-select: none;
+  /* Disable the browser's double-tap zoom so our double tap (mode cycle) works. */
+  touch-action: manipulation;
 }
 
 /* ---------- background modes (cycled by double tap) ---------- */

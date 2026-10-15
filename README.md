@@ -4,6 +4,24 @@ A tiny web app that shows what's currently playing on your Spotify account — a
 
 No build step, no dependencies: plain HTML, CSS and JavaScript.
 
+![Now-Playing running on a phone in landscape, black background mode](screenshots/player-black.jpg)
+
+| Black | Album blur | Greyscale |
+|---|---|---|
+| ![Black mode](screenshots/player-black.jpg) | ![Album blur mode](screenshots/player-blur.jpg) | ![Greyscale mode](screenshots/player-grey.jpg) |
+
+<sub>The Black view is a screenshot from the phone. The Album blur and Greyscale previews were generated from it to match each mode's styling.</sub>
+
+### On the phone
+
+| Landscape | Landscape · synced lyrics |
+|---|---|
+| ![Landscape player, greyscale mode](screenshots/landscape-grey.jpg) | ![Landscape synced lyrics view](screenshots/landscape-lyrics.jpg) |
+
+| Portrait | Portrait · synced lyrics |
+|---|---|
+| <img src="screenshots/portrait-grey.jpg" alt="Portrait player, greyscale mode" width="280"> | <img src="screenshots/portrait-lyrics.jpg" alt="Portrait synced lyrics view, greyscale mode" width="280"> |
+
 ## Features
 
 - Current track or podcast episode, polled every 3 s, with a smoothly interpolated progress bar
