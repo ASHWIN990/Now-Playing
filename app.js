@@ -216,6 +216,10 @@ function tick() {
 let lyricsFor = null;      // track id the lyrics panel currently belongs to
 let lyricLines = [];       // [{ t: ms, text }] when synced, else []
 let lyricIndex = -1;
+// The lyrics view shows only when the user wants it (long press) AND the
+// current track has lyrics; otherwise the normal player view is shown.
+let lyricsWanted = !!store.get('lyrics_on');
+let lyricsReady = false;
 
 function parseLrc(lrc) {
   const lines = [];
@@ -228,39 +232,136 @@ function parseLrc(lrc) {
   return lines.sort((a, b) => a.t - b.t);
 }
 
-async function fetchLyrics(item) {
-  const durationS = Math.round(item.duration_ms / 1000);
-  const params = new URLSearchParams({
-    track_name: item.name,
-    artist_name: item.artists[0].name,
-    album_name: item.album.name,
-    duration: durationS,
-  });
-  const res = await fetch('https://lrclib.net/api/get?' + params);
-  if (res.ok) return res.json();
-  if (res.status !== 404) throw new Error('lyrics ' + res.status);
+// LRCLIB rate-limits per IP, and its 429 responses carry no CORS headers, so
+// the browser reports them as network errors. Send one request at a time,
+// spaced out, and back off on any failure. Requests for tracks that are no
+// longer wanted (skipped) are dropped instead of retried.
+const LRCLIB_GAP_MS = 1500;
+const LRCLIB_MAX_BACKOFF_MS = 30000;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let lrclibChain = Promise.resolve();
+let lrclibNextAt = 0;
 
-  // No exact match: search by title + artist and take the closest duration.
-  const search = await fetch('https://lrclib.net/api/search?' + new URLSearchParams({
-    track_name: item.name,
-    artist_name: item.artists[0].name,
-  }));
-  if (!search.ok) return null;
-  const hits = (await search.json())
+function lrclib(path, params, wanted) {
+  const url = 'https://lrclib.net/api/' + path + '?' + new URLSearchParams(params);
+  const run = async () => {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      if (!wanted()) throw new Error('cancelled');
+      const wait = lrclibNextAt - Date.now();
+      if (wait > 0) await sleep(wait);
+      if (!wanted()) throw new Error('cancelled');
+      lrclibNextAt = Date.now() + LRCLIB_GAP_MS;
+      let res = null;
+      try { res = await fetch(url); } catch {}   // CORS-less 429 lands here
+      if (res && res.status !== 429) return res;
+      const retryAfter = res ? Number(res.headers.get('Retry-After') || 1) : 1;
+      lrclibNextAt = Date.now()
+        + Math.min(LRCLIB_MAX_BACKOFF_MS, retryAfter * 1000 * 2 ** attempt)
+        + Math.random() * 500;
+    }
+    throw new Error('lyrics rate limited');
+  };
+  const p = lrclibChain.then(run, run);
+  lrclibChain = p.catch(() => {});
+  return p;
+}
+
+// "Song - Remastered 2011", "Song (feat. X)", "Song (From "Film")" -> "Song"
+function cleanTitle(name) {
+  return name
+    .replace(/\s+-\s+.*$/, '')
+    .replace(/\s*[\(\[][^\)\]]*[\)\]]/g, '')
+    .trim() || name;
+}
+
+// One search request per track; a second one with a cleaned title only if
+// the first finds nothing within 3 s of the track's duration.
+async function fetchLyrics(item, wanted) {
+  const durationS = item.duration_ms / 1000;
+  const artist = item.artists[0].name;
+  const pick = (hits) => hits
     .filter((h) => Math.abs(h.duration - durationS) <= 3)
-    .sort((a, b) => !!b.syncedLyrics - !!a.syncedLyrics);
-  return hits[0] || null;
+    .sort((a, b) => !!b.syncedLyrics - !!a.syncedLyrics || !!b.plainLyrics - !!a.plainLyrics)[0] || null;
+
+  const search = async (title) => {
+    const res = await lrclib('search', { track_name: title, artist_name: artist }, wanted);
+    if (!res.ok) throw new Error('lyrics ' + res.status);
+    return pick(await res.json());
+  };
+  const hit = await search(item.name);
+  const clean = cleanTitle(item.name);
+  return hit || (clean !== item.name ? search(clean) : null);
+}
+
+// Normalised result: { kind: 'synced' | 'plain' | 'instrumental' | 'none', lrc?, text? }
+function toLyricsResult(data) {
+  if (!data) return { kind: 'none' };
+  if (data.instrumental) return { kind: 'instrumental' };
+  if (data.syncedLyrics) return { kind: 'synced', lrc: data.syncedLyrics };
+  if (data.plainLyrics) return { kind: 'plain', text: data.plainLyrics };
+  return { kind: 'none' };
+}
+
+// Cache results per track (persisted, most recent 150) so repeats are instant
+// and don't hit LRCLIB; share in-flight requests between prefetch and display.
+const LYRICS_CACHE_MAX = 150;
+const lyricsCache = new Map();
+try {
+  for (const [k, v] of JSON.parse(store.get('lyrics_cache') || '[]')) lyricsCache.set(k, v);
+} catch {}
+let cacheSaveTimer = null;
+function cacheLyrics(id, result) {
+  lyricsCache.delete(id);
+  lyricsCache.set(id, result);
+  while (lyricsCache.size > LYRICS_CACHE_MAX) lyricsCache.delete(lyricsCache.keys().next().value);
+  clearTimeout(cacheSaveTimer);
+  cacheSaveTimer = setTimeout(() => store.set('lyrics_cache', JSON.stringify([...lyricsCache])), 1000);
+}
+
+const lyricsInFlight = new Map();
+let prefetchId = null;
+const isWanted = (id) => () => id === lyricsFor || id === prefetchId;
+
+function getLyrics(item) {
+  const id = item.id || item.uri;
+  if (lyricsCache.has(id)) return Promise.resolve(lyricsCache.get(id));
+  if (!lyricsInFlight.has(id)) {
+    lyricsInFlight.set(id, fetchLyrics(item, isWanted(id))
+      .then((data) => { const r = toLyricsResult(data); cacheLyrics(id, r); return r; })
+      .finally(() => lyricsInFlight.delete(id)));
+  }
+  return lyricsInFlight.get(id);
+}
+
+// Look up the next queued track's lyrics ahead of time (once per track).
+let prefetchedAfter = null;
+async function prefetchNextLyrics(currentId) {
+  if (prefetchedAfter === currentId) return;
+  prefetchedAfter = currentId;
+  try {
+    const res = await fetch('https://api.spotify.com/v1/me/player/queue', {
+      headers: { Authorization: 'Bearer ' + (await getToken()) },
+    });
+    if (!res.ok) return;
+    const next = (await res.json()).queue?.find((t) => t && t.type === 'track');
+    if (next && !lyricsCache.has(next.id)) {
+      prefetchId = next.id;
+      await getLyrics(next);
+    }
+  } catch {}
 }
 
 function showLyricsMessage(msg) {
   lyricLines = [];
   lyricIndex = -1;
+  lyricsReady = false;
   const box = $('lyrics');
   box.replaceChildren();
   const p = document.createElement('p');
   p.className = 'lyrics-msg';
   p.textContent = msg;
   box.append(p);
+  updateLyricsView();
 }
 
 function showLyricLines(lines, synced) {
@@ -274,27 +375,36 @@ function showLyricLines(lines, synced) {
     return p;
   }));
   box.scrollTop = 0;
+  lyricsReady = true;
+  updateLyricsView();
 }
 
+function showLyricsResult(r) {
+  if (r.kind === 'synced') showLyricLines(parseLrc(r.lrc), true);
+  else if (r.kind === 'plain') showLyricLines(r.text.split('\n').map((text) => ({ text })), false);
+  else if (r.kind === 'instrumental') showLyricsMessage('♪ Instrumental ♪');
+  else showLyricsMessage('No lyrics found');
+}
+
+let lyricsRetry = null;
 async function loadLyrics(item) {
   const id = item ? item.id || item.uri : null;
   if (id === lyricsFor) return;
   lyricsFor = id;
+  clearTimeout(lyricsRetry);
   if (!item) return showLyricsMessage('');
 
-  showLyricsMessage('Loading lyrics…');
+  if (!lyricsCache.has(id)) showLyricsMessage('Loading lyrics…');
   try {
-    const data = await fetchLyrics(item);
+    const r = await getLyrics(item);
     if (lyricsFor !== id) return;              // track changed while loading
-    if (!data) showLyricsMessage('No lyrics found');
-    else if (data.instrumental) showLyricsMessage('♪ Instrumental ♪');
-    else if (data.syncedLyrics) showLyricLines(parseLrc(data.syncedLyrics), true);
-    else if (data.plainLyrics) showLyricLines(data.plainLyrics.split('\n').map((text) => ({ text })), false);
-    else showLyricsMessage('No lyrics found');
+    showLyricsResult(r);
+    prefetchNextLyrics(id);
   } catch {
     if (lyricsFor === id) {
       showLyricsMessage('Lyrics unavailable');
-      lyricsFor = null;                         // retry on next poll
+      // Backoff already happened inside lrclib(); try once more a bit later.
+      lyricsRetry = setTimeout(() => { if (lyricsFor === id) { lyricsFor = null; loadLyrics(item); } }, 20000);
     }
   }
 }
@@ -320,12 +430,19 @@ function syncLyrics(pos) {
   }
 }
 
-function setLyricsView(on) {
+function updateLyricsView() {
+  const on = lyricsWanted && lyricsReady;
+  const wasOn = document.body.classList.contains('lyrics-on');
   document.body.classList.toggle('lyrics-on', on);
   $('lyrics').hidden = !on;
-  store.set('lyrics_on', on ? '1' : '');
   // Re-centre immediately when the panel becomes visible.
-  if (on) { lyricIndex = -1; tick(); }
+  if (on && !wasOn) { lyricIndex = -1; tick(); }
+}
+
+function setLyricsWanted(on) {
+  lyricsWanted = on;
+  store.set('lyrics_on', on ? '1' : '');
+  updateLyricsView();
 }
 
 // ---------- polling loop ----------
@@ -418,7 +535,6 @@ function cycleMode() {
 }
 
 applyMode(store.get('bg_mode'));
-setLyricsView(!!store.get('lyrics_on'));
 
 function toggleFullscreen() {
   const el = document.documentElement;
@@ -439,9 +555,9 @@ player.addEventListener('pointerdown', () => {
   clearTimeout(pressTimer);
   pressTimer = setTimeout(() => {
     longPressed = true;
-    const on = !document.body.classList.contains('lyrics-on');
-    setLyricsView(on);
-    showToast(on ? 'Lyrics' : 'Lyrics off');
+    const on = !lyricsWanted;
+    setLyricsWanted(on);
+    showToast(!on ? 'Lyrics off' : lyricsReady ? 'Lyrics' : 'Lyrics on · none for this track yet');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(hideToast, 1200);
   }, LONG_PRESS_MS);
