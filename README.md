@@ -11,6 +11,7 @@ No build step, no dependencies: plain HTML, CSS and JavaScript.
   - **Black** — pure black, ideal for OLED screens
   - **Album blur** — blurred album art behind everything
   - **Greyscale** — black background, greyscale art and accents
+- **Synced lyrics** — **long press** to toggle a lyrics view with the current line highlighted and auto-scrolled (from [LRCLIB](https://lrclib.net); falls back to plain lyrics, and marks instrumentals)
 - **Single tap** toggles fullscreen
 - Portrait and landscape layouts
 - Keeps the screen awake while visible (Screen Wake Lock API, where supported)
@@ -19,6 +20,8 @@ No build step, no dependencies: plain HTML, CSS and JavaScript.
 ## How it works
 
 The app signs in with Spotify's **Authorization Code flow with PKCE**, entirely in the browser — no backend and no client secret. Tokens are stored in the browser's `localStorage` and refreshed automatically. Playback comes from [`GET /v1/me/player`](https://developer.spotify.com/documentation/web-api/reference/get-information-about-the-users-current-playback).
+
+Spotify's API doesn't provide lyrics, so they come from [LRCLIB](https://lrclib.net), a free, open lyrics database (no key needed). Lyrics are matched by title, artist, album and duration, and synced to the locally interpolated playback position. Coverage depends on LRCLIB.
 
 ## Setup
 

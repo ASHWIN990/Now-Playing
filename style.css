@@ -195,11 +195,53 @@ body.mode-grey #art { filter: grayscale(1); }
   min-height: 1.2em;
 }
 
+/* ---------- lyrics view (long press) ---------- */
+.lyrics {
+  position: relative;   /* so line offsetTop is measured from the panel */
+  margin-top: 16px;
+  height: 38vh;
+  overflow-y: auto;
+  scrollbar-width: none;
+  /* Fade lines out towards the top and bottom edges. */
+  -webkit-mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
+  mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
+  padding: 16vh 0;
+}
+.lyrics::-webkit-scrollbar { display: none; }
+.lyric, .lyrics-msg {
+  font-size: clamp(18px, 4.6vw, 26px);
+  font-weight: 700;
+  line-height: 1.35;
+  padding: 6px 0;
+  color: var(--faint);
+  transition: color 0.3s ease, transform 0.3s ease;
+  transform-origin: left center;
+}
+.lyric.active { color: var(--fg); }
+.lyric.plain { color: var(--muted); font-weight: 500; font-size: 18px; }
+.lyrics-msg { color: var(--muted); font-weight: 500; }
+
+/* In lyrics view, compact the header and drop album/progress/device. */
+body.lyrics-on #status,
+body.lyrics-on #album,
+body.lyrics-on .progress,
+body.lyrics-on #device { display: none; }
+body.lyrics-on #title { font-size: clamp(18px, 4.4vw, 24px); -webkit-line-clamp: 1; }
+body.lyrics-on #artist { font-size: 15px; margin-top: 2px; }
+body.lyrics-on .art-wrap { width: min(44vw, 30vh); }
+body.lyrics-on #player { gap: 20px; }
+
 /* Landscape: art left, text right */
 @media (orientation: landscape) {
   #player { flex-direction: row; gap: 48px; }
   .art-wrap { width: min(70vh, 44vw); }
   .meta { text-align: left; width: min(44vw, 520px); }
+  .lyrics { height: 62vh; padding: 26vh 0; }
+  body.lyrics-on .art-wrap { width: min(60vh, 34vw); }
+  body.lyrics-on .meta { width: min(52vw, 640px); }
+}
+@media (orientation: portrait) {
+  .lyric, .lyrics-msg { transform-origin: center; }
 }
 
 #toast {

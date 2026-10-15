@@ -138,6 +138,7 @@ function render(p) {
     $('status').textContent = '';
     $('device').textContent = '';
     setArt('');
+    loadLyrics(null);
     tick();
     return;
   }
@@ -157,6 +158,7 @@ function render(p) {
 
   const images = isEpisode ? item.images : item.album.images;
   setArt(images && images.length ? images[0].url : '');
+  loadLyrics(isEpisode ? null : item);
   document.title = item.name + ' · ' + $('artist').textContent;
   tick();
 }
@@ -194,9 +196,126 @@ function tick() {
   let pos = current.progress_ms || 0;
   if (current.is_playing) pos += Date.now() - fetchedAt;
   pos = Math.min(pos, item.duration_ms);
+  syncLyrics(pos);
   $('bar-fill').style.width = (pos / item.duration_ms) * 100 + '%';
   $('pos').textContent = fmt(pos);
   $('dur').textContent = fmt(item.duration_ms);
+}
+
+// ---------- lyrics (LRCLIB: free, keyless, CORS-enabled) ----------
+let lyricsFor = null;      // track id the lyrics panel currently belongs to
+let lyricLines = [];       // [{ t: ms, text }] when synced, else []
+let lyricIndex = -1;
+
+function parseLrc(lrc) {
+  const lines = [];
+  for (const raw of lrc.split('\n')) {
+    const stamps = [...raw.matchAll(/\[(\d+):(\d+(?:\.\d+)?)\]/g)];
+    if (!stamps.length) continue;
+    const text = raw.replace(/\[[^\]]*\]/g, '').trim();
+    for (const m of stamps) lines.push({ t: (Number(m[1]) * 60 + Number(m[2])) * 1000, text });
+  }
+  return lines.sort((a, b) => a.t - b.t);
+}
+
+async function fetchLyrics(item) {
+  const durationS = Math.round(item.duration_ms / 1000);
+  const params = new URLSearchParams({
+    track_name: item.name,
+    artist_name: item.artists[0].name,
+    album_name: item.album.name,
+    duration: durationS,
+  });
+  const res = await fetch('https://lrclib.net/api/get?' + params);
+  if (res.ok) return res.json();
+  if (res.status !== 404) throw new Error('lyrics ' + res.status);
+
+  // No exact match: search by title + artist and take the closest duration.
+  const search = await fetch('https://lrclib.net/api/search?' + new URLSearchParams({
+    track_name: item.name,
+    artist_name: item.artists[0].name,
+  }));
+  if (!search.ok) return null;
+  const hits = (await search.json())
+    .filter((h) => Math.abs(h.duration - durationS) <= 3)
+    .sort((a, b) => !!b.syncedLyrics - !!a.syncedLyrics);
+  return hits[0] || null;
+}
+
+function showLyricsMessage(msg) {
+  lyricLines = [];
+  lyricIndex = -1;
+  const box = $('lyrics');
+  box.replaceChildren();
+  const p = document.createElement('p');
+  p.className = 'lyrics-msg';
+  p.textContent = msg;
+  box.append(p);
+}
+
+function showLyricLines(lines, synced) {
+  lyricLines = synced ? lines : [];
+  lyricIndex = -1;
+  const box = $('lyrics');
+  box.replaceChildren(...lines.map((l) => {
+    const p = document.createElement('p');
+    p.className = 'lyric' + (synced ? '' : ' plain');
+    p.textContent = l.text || '♪';
+    return p;
+  }));
+  box.scrollTop = 0;
+}
+
+async function loadLyrics(item) {
+  const id = item ? item.id || item.uri : null;
+  if (id === lyricsFor) return;
+  lyricsFor = id;
+  if (!item) return showLyricsMessage('');
+
+  showLyricsMessage('Loading lyrics…');
+  try {
+    const data = await fetchLyrics(item);
+    if (lyricsFor !== id) return;              // track changed while loading
+    if (!data) showLyricsMessage('No lyrics found');
+    else if (data.instrumental) showLyricsMessage('♪ Instrumental ♪');
+    else if (data.syncedLyrics) showLyricLines(parseLrc(data.syncedLyrics), true);
+    else if (data.plainLyrics) showLyricLines(data.plainLyrics.split('\n').map((text) => ({ text })), false);
+    else showLyricsMessage('No lyrics found');
+  } catch {
+    if (lyricsFor === id) {
+      showLyricsMessage('Lyrics unavailable');
+      lyricsFor = null;                         // retry on next poll
+    }
+  }
+}
+
+// Highlight the line for the current position and keep it centred.
+function syncLyrics(pos) {
+  if (!lyricLines.length) return;
+  let i = -1;
+  while (i + 1 < lyricLines.length && lyricLines[i + 1].t <= pos) i++;
+  if (i === lyricIndex) return;
+  const box = $('lyrics');
+  const els = box.children;
+  if (els[lyricIndex]) els[lyricIndex].classList.remove('active');
+  lyricIndex = i;
+  const el = els[i];
+  if (!el) return;
+  el.classList.add('active');
+  if (!box.hidden) {
+    box.scrollTo({
+      top: el.offsetTop - box.clientHeight / 2 + el.offsetHeight / 2,
+      behavior: 'smooth',
+    });
+  }
+}
+
+function setLyricsView(on) {
+  document.body.classList.toggle('lyrics-on', on);
+  $('lyrics').hidden = !on;
+  store.set('lyrics_on', on ? '1' : '');
+  // Re-centre immediately when the panel becomes visible.
+  if (on) { lyricIndex = -1; tick(); }
 }
 
 // ---------- polling loop ----------
@@ -289,6 +408,7 @@ function cycleMode() {
 }
 
 applyMode(store.get('bg_mode'));
+setLyricsView(!!store.get('lyrics_on'));
 
 function toggleFullscreen() {
   const el = document.documentElement;
@@ -296,10 +416,32 @@ function toggleFullscreen() {
   else el.requestFullscreen?.().catch(() => {});
 }
 
-// Single tap: fullscreen. Double tap: cycle background mode.
+// Single tap: fullscreen. Double tap: cycle background mode. Long press: lyrics.
 const DOUBLE_TAP_MS = 300;
+const LONG_PRESS_MS = 550;
 let tapTimer = null;
-$('player').addEventListener('click', () => {
+let pressTimer = null;
+let longPressed = false;
+
+const player = $('player');
+player.addEventListener('pointerdown', () => {
+  longPressed = false;
+  clearTimeout(pressTimer);
+  pressTimer = setTimeout(() => {
+    longPressed = true;
+    const on = !document.body.classList.contains('lyrics-on');
+    setLyricsView(on);
+    showToast(on ? 'Lyrics' : 'Lyrics off');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, 1200);
+  }, LONG_PRESS_MS);
+});
+['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) =>
+  player.addEventListener(ev, () => clearTimeout(pressTimer)));
+player.addEventListener('contextmenu', (e) => e.preventDefault());
+
+player.addEventListener('click', () => {
+  if (longPressed) { longPressed = false; return; }
   if (tapTimer) {
     clearTimeout(tapTimer);
     tapTimer = null;
@@ -326,7 +468,7 @@ $('reset').addEventListener('click', () => {
 
 if (!store.get('client_id')) store.set('client_id', DEFAULT_CLIENT_ID);
 
-setInterval(tick, 500);
+setInterval(tick, 250);
 
 (async () => {
   try {
