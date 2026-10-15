@@ -115,8 +115,12 @@ async function fetchPlayback() {
   }
   if (!res.ok) {
     // Surface Spotify's reason (e.g. a 403 for a user not added to a development-mode app).
+    // The development-mode 403 comes back as plain text, other errors as JSON.
     let reason = '';
-    try { reason = (await res.json()).error?.message || ''; } catch {}
+    try {
+      const body = await res.text();
+      try { reason = JSON.parse(body).error?.message || ''; } catch { reason = body.trim(); }
+    } catch {}
     throw new Error('Spotify API ' + res.status + (reason ? ': ' + reason : ''));
   }
   return res.json();

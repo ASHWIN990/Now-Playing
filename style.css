@@ -246,6 +246,36 @@ body.lyrics-on #player { gap: 20px; }
   .lyric, .lyrics-msg { transform-origin: center; }
 }
 
+/* Big screens (TV, desktop): scale everything with the viewport instead of
+   the phone-sized pixel caps above. Phones in landscape (~750x360) stay as is. */
+@media (orientation: landscape) and (min-width: 1000px) and (min-height: 560px) {
+  #player { gap: 6vw; padding: 5vh 6vw; }
+  .art-wrap { width: min(70vh, 42vw); }
+  .meta { width: 46vw; }
+  #art, #art-empty { border-radius: 1.6vh; }
+
+  .status { font-size: 1.7vh; margin-bottom: 1.4vh; }
+  #title { font-size: 6vh; }
+  #artist { font-size: 3.4vh; margin-top: 1vh; }
+  #album { font-size: 2.4vh; margin-top: 0.6vh; }
+  .progress { margin-top: 4.5vh; }
+  .bar { height: 0.5vh; border-radius: 0.25vh; }
+  .times { font-size: 1.9vh; margin-top: 1.2vh; }
+  .device { font-size: 2vh; margin-top: 3vh; }
+
+  .lyrics { height: 68vh; padding: 30vh 0; margin-top: 2.5vh; }
+  .lyric, .lyrics-msg { font-size: 4.8vh; line-height: 1.3; padding: 1vh 0; }
+  .lyric.plain { font-size: 3vh; }
+
+  body.lyrics-on #player { gap: 5vw; }
+  body.lyrics-on .art-wrap { width: min(56vh, 30vw); }
+  body.lyrics-on .meta { width: 56vw; }
+  body.lyrics-on #title { font-size: 4vh; }
+  body.lyrics-on #artist { font-size: 2.6vh; margin-top: 0.4vh; }
+
+  #toast { font-size: 2vh; padding: 1.2vh 2.4vh; bottom: 4vh; }
+}
+
 #toast {
   position: fixed;
   left: 50%;
