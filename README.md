@@ -1,6 +1,6 @@
 # Now-Playing
 
-A tiny web app that shows what's currently playing on your Spotify account — album art, title, artist, album, a live progress bar and the playing device. Built to run as an always-on display on an old Android phone, served locally from the phone itself with Termux.
+A tiny web app that shows what's currently playing on your Spotify account — album art, title, artist, album, a live progress bar and the playing device. Built to run as an always-on display on an old Android phone, served locally from the phone itself with Termux. You can also host it on HTTPS and run it without Termux (see [3c](#3c-run-on-a-phone-without-termux)).
 
 No build step, no dependencies: plain HTML, CSS and JavaScript.
 
@@ -92,6 +92,41 @@ bash /sdcard/boot-setup.sh
 This installs `~/.termux/boot/start-spotify-monitor`, which starts the server when the phone boots.
 
 On Huawei/EMUI and other aggressive battery managers, also allow Termux and Termux:Boot to auto-launch and run in the background (**Settings → Battery → App launch → Manage manually**), or the boot script won't run.
+
+### 3c. Run on a phone without Termux
+
+You don't need Termux if the app is served from somewhere else. Spotify only accepts `http://` redirect URIs on a loopback address (`127.0.0.1`). Any other address has to use `https://`. So opening `http://192.168.x.x:8080/` from another device on your Wi-Fi **will not work**. Use one of these options instead.
+
+#### Option A: Host it on HTTPS (GitHub Pages)
+
+This works on any phone or browser and needs no computer once it's set up.
+
+1. Fork this repo, or push it to your own GitHub account.
+2. In the repo, go to **Settings → Pages**. Under **Source**, pick **Deploy from a branch**, then choose `main` and `/ (root)`, and save.
+3. After a minute the app is live at `https://<your-username>.github.io/<repo-name>/`.
+4. Add that exact URL, including the trailing slash, as a redirect URI in your Spotify app. The app's setup screen also shows the exact redirect URI to register.
+5. Open the URL in the phone's browser and connect Spotify. You can also use **Add to Home screen** to open it full screen like an app.
+
+Any other static HTTPS host works too, such as Netlify, Cloudflare Pages or Vercel. Register whatever URL it gives you as the redirect URI.
+
+#### Option B: Serve from a computer over USB (`adb reverse`)
+
+This keeps everything local, but the computer has to stay on and connected.
+
+1. On the computer, in the project folder, start the server:
+   ```sh
+   python3 -m http.server 8080 --bind 127.0.0.1
+   ```
+2. Connect the phone with USB debugging enabled, then run:
+   ```sh
+   adb reverse tcp:8080 tcp:8080
+   ```
+   This forwards the phone's `127.0.0.1:8080` to the computer, so the redirect URI from step 1 (`http://127.0.0.1:8080/`) still works.
+3. Open <http://127.0.0.1:8080/> in the phone's browser and connect Spotify.
+
+You need to run `adb reverse` again each time the phone reconnects.
+
+> Sign-in and settings are saved separately for each URL. If you switch between URLs (for example from `127.0.0.1` to GitHub Pages), connect Spotify again, and make sure each URL is registered as a redirect URI.
 
 ## Files
 
