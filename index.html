@@ -7,7 +7,7 @@
   <title>Now Playing</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=13">
+  <link rel="stylesheet" href="style.css?v=18">
 </head>
 <body>
   <div id="backdrop"></div>
@@ -49,7 +49,18 @@
     </div>
   </main>
 
+  <!-- Second page: clock (swipe or ←/→ to switch, double tap for next style) -->
+  <section id="clock" class="clock-page" hidden>
+    <div id="clock-face" class="clock-face"></div>
+    <div id="clock-date" class="clock-date"></div>
+    <div id="clock-weather" class="clock-weather" hidden></div>
+  </section>
+
+  <div id="pager" class="pager" hidden><span></span><span></span></div>
+
   <div id="toast" hidden></div>
-  <script src="app.js?v=13"></script>
+  <script src="clock.js?v=18"></script>
+  <script src="weather.js?v=18"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>

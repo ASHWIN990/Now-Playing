@@ -474,7 +474,7 @@ async function poll() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && !$('player').hidden) poll();
+  if (!document.hidden && !($('player').hidden && $('clock').hidden)) poll();
 });
 
 // ---------- UI plumbing ----------
@@ -493,8 +493,14 @@ function showView() {
   const hasToken = !!store.get('refresh_token');
   $('setup').hidden = hasClient;
   $('login').hidden = !hasClient || hasToken;
-  $('player').hidden = !(hasClient && hasToken);
-  if (hasClient && hasToken) {
+  const ready = hasClient && hasToken;
+  if (!ready) {
+    $('player').hidden = true;
+    $('clock').hidden = true;
+    Clock.stop();
+    Weather.stop();
+  } else {
+    showPage(page, false);
     poll();
     keepAwake();
   }
@@ -542,39 +548,133 @@ function toggleFullscreen() {
   else el.requestFullscreen?.().catch(() => {});
 }
 
-// Single tap: fullscreen. Double tap: cycle background mode. Long press: lyrics.
+// ---------- pages: now playing <-> clock ----------
+const PAGES = ['player', 'clock'];
+let page = PAGES.includes(store.get('page')) ? store.get('page') : 'player';
+let pagerTimer = null;
+
+function showPage(name, announce = true) {
+  page = name;
+  store.set('page', name);
+  $('player').hidden = name !== 'player';
+  $('clock').hidden = name !== 'clock';
+  if (name === 'clock') { Clock.start(); Weather.start(); }
+  else { Clock.stop(); Weather.stop(); }
+
+  // Page dots, briefly.
+  const pager = $('pager');
+  [...pager.children].forEach((d, i) => d.classList.toggle('on', PAGES[i] === name));
+  if (announce) {
+    pager.hidden = false;
+    pager.classList.add('show');
+    clearTimeout(pagerTimer);
+    pagerTimer = setTimeout(() => pager.classList.remove('show'), 1500);
+  }
+}
+
+function nextPage(dir) {
+  const i = PAGES.indexOf(page);
+  showPage(PAGES[(i + dir + PAGES.length) % PAGES.length]);
+}
+
+let clockStyle = Clock.setStyle(store.get('clock_style'));
+
+function cycleClockStyle() {
+  const i = Clock.STYLES.indexOf(clockStyle);
+  clockStyle = Clock.setStyle(Clock.STYLES[(i + 1) % Clock.STYLES.length]);
+  store.set('clock_style', clockStyle);
+  showToast(Clock.LABELS[clockStyle]);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, 1200);
+}
+
+// ---------- gestures ----------
+// Single tap: fullscreen. Double tap: page-specific (background mode on the
+// player, clock style on the clock). Long press: page-specific (lyrics on the
+// player). Horizontal swipe: switch page.
 const DOUBLE_TAP_MS = 300;
 const LONG_PRESS_MS = 550;
-let tapTimer = null;
-let pressTimer = null;
-let longPressed = false;
+const SWIPE_MIN_PX = 60;
+const MOVE_CANCEL_PX = 12;
 
-const player = $('player');
-player.addEventListener('pointerdown', () => {
-  longPressed = false;
-  clearTimeout(pressTimer);
-  pressTimer = setTimeout(() => {
-    longPressed = true;
-    const on = !lyricsWanted;
-    setLyricsWanted(on);
-    showToast(!on ? 'Lyrics off' : lyricsReady ? 'Lyrics' : 'Lyrics on · none for this track yet');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(hideToast, 1200);
-  }, LONG_PRESS_MS);
-});
-['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) =>
-  player.addEventListener(ev, () => clearTimeout(pressTimer)));
-player.addEventListener('contextmenu', (e) => e.preventDefault());
+function addGestures(target, { onDoubleTap, onLongPress }) {
+  let tapTimer = null;
+  let pressTimer = null;
+  let suppressClick = false;
+  let start = null;
 
-player.addEventListener('click', () => {
-  if (longPressed) { longPressed = false; return; }
-  if (tapTimer) {
-    clearTimeout(tapTimer);
-    tapTimer = null;
-    cycleMode();
-  } else {
-    tapTimer = setTimeout(() => { tapTimer = null; toggleFullscreen(); }, DOUBLE_TAP_MS);
-  }
+  target.addEventListener('pointerdown', (e) => {
+    suppressClick = false;
+    start = { x: e.clientX, y: e.clientY };
+    clearTimeout(pressTimer);
+    if (onLongPress) {
+      pressTimer = setTimeout(() => { suppressClick = true; onLongPress(); }, LONG_PRESS_MS);
+    }
+  });
+  target.addEventListener('pointermove', (e) => {
+    if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > MOVE_CANCEL_PX) {
+      clearTimeout(pressTimer);
+    }
+  });
+  target.addEventListener('pointerup', (e) => {
+    clearTimeout(pressTimer);
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    start = null;
+    if (Math.abs(dx) > SWIPE_MIN_PX && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      suppressClick = true;
+      nextPage(dx < 0 ? 1 : -1);
+    }
+  });
+  ['pointercancel', 'pointerleave'].forEach((ev) =>
+    target.addEventListener(ev, () => { clearTimeout(pressTimer); start = null; }));
+  target.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  target.addEventListener('click', () => {
+    if (suppressClick) { suppressClick = false; return; }
+    if (tapTimer) {
+      clearTimeout(tapTimer);
+      tapTimer = null;
+      onDoubleTap();
+    } else {
+      tapTimer = setTimeout(() => { tapTimer = null; toggleFullscreen(); }, DOUBLE_TAP_MS);
+    }
+  });
+}
+
+function toggleLyrics() {
+  const on = !lyricsWanted;
+  setLyricsWanted(on);
+  showToast(!on ? 'Lyrics off' : lyricsReady ? 'Lyrics' : 'Lyrics on · none for this track yet');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, 1200);
+}
+
+addGestures($('player'), { onDoubleTap: cycleMode, onLongPress: toggleLyrics });
+// Clock colours: colourful (default) or greyscale, toggled with a long press.
+function applyClockColor(mono) {
+  $('clock').classList.toggle('mono', mono);
+  store.set('clock_mono', mono ? '1' : '');
+}
+function toggleClockColor() {
+  const mono = !$('clock').classList.contains('mono');
+  applyClockColor(mono);
+  showToast(mono ? 'Greyscale' : 'Colourful');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, 1200);
+}
+applyClockColor(!!store.get('clock_mono'));
+
+addGestures($('clock'), { onDoubleTap: cycleClockStyle, onLongPress: toggleClockColor });
+
+// Keyboard: ←/→ switch page.
+document.addEventListener('keydown', (e) => {
+  if ($('player').hidden && $('clock').hidden) return;   // setup/login screens
+  if (e.key === 'ArrowRight') nextPage(1);
+  else if (e.key === 'ArrowLeft') nextPage(-1);
+  else return;
+  e.preventDefault();
 });
 
 $('redirect-uri').textContent = REDIRECT_URI;

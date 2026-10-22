@@ -292,3 +292,185 @@ body.lyrics-on #player { gap: 20px; }
   color: var(--fg);
   font-size: 14px;
 }
+
+/* ---------- clock page ---------- */
+.clock-page {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4vmin;
+  padding: 24px 16px;
+  font-variant-numeric: tabular-nums;
+
+  --c-pink: #ff375f;
+  --c-green: #30d158;
+  --c-blue: #0a84ff;
+  --c-purple: #bf5af2;
+  --c-orange: #ff9f0a;
+  --c-yellow: #ffd60a;
+  --c-sky: #64d2ff;
+}
+.clock-page.mono {
+  --c-pink: #ffffff;
+  --c-green: rgba(255, 255, 255, 0.55);
+  --c-blue: #ffffff;
+  --c-purple: #d0d0d0;
+  --c-orange: #ffffff;
+  --c-yellow: #ffffff;
+  --c-sky: #ffffff;
+}
+/* Gradient text (falls back to plain colour where unsupported). */
+.cf-hm, .cf-st-h, .cf-st-m {
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.clock-face { display: flex; align-items: center; justify-content: center; }
+.clock-date {
+  font-size: clamp(14px, 3.4vmin, 40px);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+/* Digital: thin, huge */
+.cf-digital { display: flex; align-items: flex-start; gap: 2vmin; line-height: 0.9; }
+.cf-hm {
+  font-size: min(26vw, 46vh);
+  font-weight: 200;
+  background-image: linear-gradient(120deg, var(--c-sky), var(--c-purple));
+  letter-spacing: -0.04em;
+}
+.cf-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1vmin;
+  padding-top: 2.5vmin;
+  font-size: min(5vw, 8vh);
+  font-weight: 300;
+}
+.cf-sec { color: var(--c-pink); }
+.cf-ampm { color: var(--muted); font-size: 0.6em; letter-spacing: 0.08em; }
+
+/* Stacked: bold hours over minutes */
+.cf-stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 0.82;
+  font-size: min(34vh, 40vw);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+}
+.cf-st-h { background-image: linear-gradient(135deg, var(--c-yellow), var(--c-orange)); }
+.cf-st-m { background-image: linear-gradient(135deg, var(--c-pink), var(--c-purple)); }
+@media (orientation: landscape) {
+  .cf-stacked { flex-direction: row; gap: 0.12em; font-size: min(52vh, 30vw); }
+}
+
+/* Analog: minimal face, sweeping second hand */
+.cf-analog { width: min(72vmin, 90vw); height: auto; overflow: visible; }
+.cf-an-face { fill: none; stroke: var(--faint); stroke-width: 1; }
+.cf-an-tick { stroke: var(--faint); stroke-width: 1; stroke-linecap: round; }
+.cf-an-tick.major { stroke: var(--muted); stroke-width: 2.5; }
+.cf-an-hour, .cf-an-min, .cf-an-sec { stroke-linecap: round; }
+.cf-an-hour { stroke: var(--fg); stroke-width: 6; }
+.cf-an-min { stroke: var(--fg); stroke-width: 3.5; }
+.cf-an-sec { stroke: var(--c-pink); stroke-width: 1.5; }
+.cf-an-hub { fill: var(--c-pink); }
+
+/* Rings: hour / minute / second progress */
+.cf-rings-wrap { position: relative; width: min(72vmin, 90vw); aspect-ratio: 1; }
+.cf-rings { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cf-ring-track { fill: none; stroke: rgba(255, 255, 255, 0.08); stroke-width: 9; }
+.cf-ring { fill: none; stroke-width: 9; stroke-linecap: round; }
+.cf-ring-sec { stroke: var(--c-pink); }
+.cf-ring-min { stroke: var(--c-green); }
+.cf-ring-hour { stroke: var(--c-blue); }
+.clock-page.mono .cf-ring-min { stroke: #ffffff; }
+.clock-page.mono .cf-ring-hour { stroke: var(--muted); }
+.cf-rings-time {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: min(13vmin, 16vw);
+  font-weight: 300;
+  letter-spacing: -0.03em;
+}
+
+/* Dot matrix */
+.cf-dots { display: flex; gap: min(3vmin, 3vw); }
+.cf-glyph { display: grid; gap: min(0.9vmin, 1vw); }
+.cf-glyph i {
+  width: min(4.2vmin, 4.4vw);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+}
+.cf-glyph { --dot: #ffffff; }
+.cf-glyph:nth-child(1) { --dot: var(--c-blue); }
+.cf-glyph:nth-child(2) { --dot: var(--c-purple); }
+.cf-glyph:nth-child(4) { --dot: var(--c-pink); }
+.cf-glyph:nth-child(5) { --dot: var(--c-orange); }
+.cf-glyph.colon { --dot: var(--c-green); }
+.cf-glyph i.on { background: var(--dot); box-shadow: 0 0 1.2vmin var(--dot); }
+.cf-glyph.colon i.on { box-shadow: none; transition: opacity 0.2s; }
+.cf-dots.blink-off .cf-glyph.colon i.on { opacity: 0.15; }
+
+/* Weather line under the date */
+.clock-weather {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35em 0.9em;
+  margin-top: -2vmin;
+  font-size: clamp(14px, 3.2vmin, 38px);
+  color: var(--muted);
+}
+.wx-icon {
+  width: 1.5em;
+  height: 1.5em;
+  fill: none;
+  stroke: var(--fg);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.wx-icon[data-icon="sun"] { stroke: var(--c-yellow); }
+.wx-icon[data-icon="moon"] { stroke: var(--c-yellow); }
+.wx-icon[data-icon="partly"] { stroke: var(--c-sky); }
+.wx-icon[data-icon="cloud"],
+.wx-icon[data-icon="fog"] { stroke: var(--c-sky); }
+.wx-icon[data-icon="rain"] { stroke: var(--c-blue); }
+.wx-icon[data-icon="snow"] { stroke: var(--c-sky); }
+.wx-icon[data-icon="storm"] { stroke: var(--c-purple); }
+.wx-temp { color: var(--fg); font-weight: 600; margin-left: -0.4em; }
+.wx-range, .wx-city { opacity: 0.8; }
+
+/* Page dots (shown briefly when switching pages) */
+.pager {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, 3vh);
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+.pager.show { opacity: 1; }
+.pager span {
+  width: clamp(6px, 0.8vh, 12px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.pager span.on { background: var(--fg); }
