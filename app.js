@@ -140,6 +140,7 @@ function render(p) {
   current = p;
   fetchedAt = Date.now();
   const item = p && p.item;
+  autoPage(!!(item && p.is_playing));
 
   if (!item) {
     $('title').textContent = 'Nothing playing';
@@ -575,6 +576,30 @@ function showPage(name, announce = true) {
 function nextPage(dir) {
   const i = PAGES.indexOf(page);
   showPage(PAGES[(i + dir + PAGES.length) % PAGES.length]);
+  // A manual switch wins over the automatic one; restart the idle wait.
+  autoSwitched = false;
+  if (idleSince !== null) idleSince = Date.now();
+}
+
+// Automatic page switching: after IDLE_TO_CLOCK_MS without playback, show the
+// clock; when playback resumes, return to Now Playing — but only if it was the
+// app (not the user) that switched to the clock.
+const IDLE_TO_CLOCK_MS = 20000;
+let idleSince = null;      // when playback stopped, or null while playing
+let autoSwitched = false;  // the clock is showing because of autoPage()
+
+function autoPage(playing) {
+  if (playing) {
+    idleSince = null;
+    if (autoSwitched && page === 'clock') showPage('player');
+    autoSwitched = false;
+    return;
+  }
+  if (idleSince === null) idleSince = Date.now();
+  if (page === 'player' && Date.now() - idleSince >= IDLE_TO_CLOCK_MS) {
+    showPage('clock');
+    autoSwitched = true;
+  }
 }
 
 let clockStyle = Clock.setStyle(store.get('clock_style'));
