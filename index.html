@@ -7,7 +7,7 @@
   <title>Now Playing</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=20">
+  <link rel="stylesheet" href="style.css?v=30">
 </head>
 <body>
   <div id="backdrop"></div>
@@ -56,11 +56,105 @@
     <div id="clock-weather" class="clock-weather" hidden></div>
   </section>
 
+  <!-- Third page (only when served by server.py): Philips WiZ light -->
+  <section id="light" class="light-page" hidden>
+    <div class="lt-glow"></div>
+    <div class="lt-side">
+      <div class="lt-head">
+        <button id="lt-name" class="lt-name" title="Rename"></button>
+        <form id="lt-name-form" class="lt-name-form" hidden>
+          <input id="lt-name-input" type="text" maxlength="40" autocomplete="off" spellcheck="false" aria-label="Light name">
+        </form>
+        <button id="lt-status" class="lt-status" title="Light details"></button>
+        <div id="lt-info" class="lt-info" hidden>
+          <div id="lt-info-rows" class="lt-info-rows"></div>
+          <button id="lt-rescan" class="lt-link">Find another light</button>
+        </div>
+      </div>
+      <button id="lt-power" class="lt-power" aria-label="Power" aria-pressed="false">
+        <svg viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>
+      </button>
+    </div>
+
+    <div id="lt-controls" class="lt-controls" hidden>
+      <label class="lt-slider">
+        <span>Brightness</span><output id="lt-dim-val"></output>
+        <input id="lt-dim" type="range" min="10" max="100" value="100">
+      </label>
+
+      <div id="lt-tabs" class="lt-tabs" role="tablist">
+        <button data-tab="white" role="tab">White</button>
+        <button data-tab="colour" role="tab">Colour</button>
+        <button data-tab="scenes" role="tab">Scenes</button>
+        <button data-tab="glow" role="tab">Glow</button>
+        <button data-tab="music" role="tab">Music</button>
+      </div>
+
+      <div class="lt-pane" data-pane="white">
+        <label class="lt-slider">
+          <span>Temperature</span><output id="lt-temp-val"></output>
+          <input id="lt-temp" class="lt-temp" type="range" min="2200" max="6500" step="50" value="2700">
+        </label>
+        <div id="lt-whites" class="lt-swatches"></div>
+      </div>
+
+      <div class="lt-pane" data-pane="colour">
+        <label class="lt-slider">
+          <span>Hue</span><output id="lt-hue-val"></output>
+          <input id="lt-hue" class="lt-hue" type="range" min="0" max="359" value="0">
+        </label>
+        <label class="lt-slider">
+          <span>Saturation</span><output id="lt-sat-val"></output>
+          <input id="lt-sat" class="lt-sat" type="range" min="0" max="100" value="100">
+        </label>
+        <div id="lt-colours" class="lt-swatches"></div>
+      </div>
+
+      <div class="lt-pane" data-pane="scenes">
+        <label id="lt-speed-row" class="lt-slider" hidden>
+          <span>Speed</span><output id="lt-speed-val"></output>
+          <input id="lt-speed" type="range" min="10" max="200" step="10" value="100">
+        </label>
+        <div id="lt-scenes" class="lt-scenes"></div>
+        <button id="lt-more-scenes" class="lt-link">More scenes</button>
+      </div>
+
+      <div class="lt-pane" data-pane="glow">
+        <p class="lt-hint">Dimmer is warmer, like a candle.</p>
+        <div id="lt-glow-levels" class="lt-chips"></div>
+      </div>
+
+      <div class="lt-pane" data-pane="music">
+        <label class="lt-toggle">
+          <span><b>Album colours</b><small>Colour from each song's cover</small></span>
+          <input id="lt-sync-album" type="checkbox">
+        </label>
+        <label class="lt-toggle">
+          <span><b>Pulse on lyrics</b><small>On every new lyric line</small></span>
+          <input id="lt-sync-lyrics" type="checkbox">
+        </label>
+        <p class="lt-hint">Pausing the music puts the light back.</p>
+      </div>
+
+    </div>
+
+    <div id="lt-find" class="lt-find" hidden>
+      <p id="lt-find-msg"></p>
+      <div id="lt-found" class="lt-chips"></div>
+      <button id="lt-search" class="lt-chip">Search again</button>
+      <form id="lt-ip-form" class="lt-ip-form">
+        <input id="lt-ip" type="text" inputmode="decimal" placeholder="Light IP, e.g. 192.168.1.40" autocomplete="off">
+        <button class="lt-chip">Use</button>
+      </form>
+    </div>
+  </section>
+
   <div id="pager" class="pager" hidden><span></span><span></span></div>
 
   <div id="toast" hidden></div>
-  <script src="clock.js?v=20"></script>
-  <script src="weather.js?v=20"></script>
-  <script src="app.js?v=20"></script>
+  <script src="clock.js?v=30"></script>
+  <script src="weather.js?v=30"></script>
+  <script src="light.js?v=30"></script>
+  <script src="app.js?v=30"></script>
 </body>
 </html>

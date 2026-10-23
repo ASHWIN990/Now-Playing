@@ -3,7 +3,13 @@
 'use strict';
 
 const SCOPES = 'user-read-currently-playing user-read-playback-state';
-const POLL_MS = 3000;
+// Spotify rate-limits each developer app as a whole (every open tab, the TV,
+// the phone…), so poll gently: every 5 s, but also right when the current
+// song is due to end so track changes still show up quickly.
+const POLL_MS = 5000;
+const POLL_HIDDEN_MS = 60000;
+const RATE_LIMIT_MIN_MS = 10000;
+const RATE_LIMIT_MAX_MS = 5 * 60 * 1000;
 // Client ID of the user's Spotify developer app (public; no secret needed with PKCE).
 const DEFAULT_CLIENT_ID = 'c63c46b7f118408aa242c93d13cb32ac';
 // Normalise so /index.html and / both use the same registered redirect URI.
@@ -110,8 +116,10 @@ async function fetchPlayback() {
     throw new Error('auth');
   }
   if (res.status === 429) {
-    const wait = Number(res.headers.get('Retry-After') || 5);
-    throw Object.assign(new Error('rate limited'), { retryAfter: wait * 1000 });
+    // Browsers usually can't read Retry-After here (Spotify doesn't expose it
+    // to scripts), so poll() backs off on its own when it's missing.
+    const wait = Number(res.headers.get('Retry-After')) * 1000 || 0;
+    throw Object.assign(new Error('rate limited'), { rateLimited: true, retryAfter: wait });
   }
   if (!res.ok) {
     // Surface Spotify's reason (e.g. a 403 for a user not added to a development-mode app).
@@ -150,6 +158,7 @@ function render(p) {
     $('device').textContent = '';
     setArt('');
     loadLyrics(null);
+    Light.onTrack(null);
     tick();
     return;
   }
@@ -168,8 +177,10 @@ function render(p) {
   $('device').textContent = p.device ? '▶ ' + p.device.name : '';
 
   const images = isEpisode ? item.images : item.album.images;
-  setArt(images && images.length ? images[0].url : '');
+  const artUrl = images && images.length ? images[0].url : '';
+  setArt(artUrl);
   loadLyrics(isEpisode ? null : item);
+  Light.onTrack({ id: item.id || item.uri, art: artUrl, playing: !!p.is_playing });
   document.title = item.name + ' · ' + $('artist').textContent;
   tick();
 }
@@ -420,6 +431,7 @@ function syncLyrics(pos) {
   const els = box.children;
   if (els[lyricIndex]) els[lyricIndex].classList.remove('active');
   lyricIndex = i;
+  if (i >= 0 && current && current.is_playing) Light.onLyricLine();
   const el = els[i];
   if (!el) return;
   el.classList.add('active');
@@ -449,18 +461,36 @@ function setLyricsWanted(on) {
 // ---------- polling loop ----------
 let pollTimer = null;
 
+let rateLimitDelay = 0;      // current backoff after 429s; 0 when not limited
+
+// Time until the next poll: normally POLL_MS, sooner if the song ends first.
+function nextPollDelay(p) {
+  const item = p && p.item;
+  if (!item || !p.is_playing) return POLL_MS;
+  const left = item.duration_ms - (p.progress_ms || 0);
+  return Math.max(1000, Math.min(POLL_MS, left + 500));
+}
+
 async function poll() {
   clearTimeout(pollTimer);
   let next = POLL_MS;
   try {
-    render(await fetchPlayback());
-    hideToast();
+    const p = await fetchPlayback();
+    render(p);
+    rateLimitDelay = 0;
+    next = nextPollDelay(p);
+    if (!$('toast').hidden && /rate|Spotify API|Offline/.test($('toast').textContent)) hideToast();
   } catch (e) {
     if (e.message === 'auth') {
       try { await getToken(); next = 0; }
       catch { logout(); return showView(); }
-    } else if (e.retryAfter) {
-      next = e.retryAfter;
+    } else if (e.rateLimited) {
+      rateLimitDelay = e.retryAfter ||
+        Math.min(RATE_LIMIT_MAX_MS, Math.max(RATE_LIMIT_MIN_MS, rateLimitDelay * 2));
+      next = rateLimitDelay;
+      const mins = Math.round(next / 60000);
+      showToast('Spotify is rate-limiting this app · retrying in ' +
+        (mins >= 1 ? mins + ' min' : Math.round(next / 1000) + ' s'), next);
     } else if (/refresh_token|invalid_grant/i.test(e.message)) {
       logout();
       return showView();
@@ -469,23 +499,24 @@ async function poll() {
       next = POLL_MS * 2;
     }
   }
-  // Poll slowly while the page is hidden.
-  if (document.hidden) next = Math.max(next, 15000);
+  // Barely poll while the page is hidden (background tab, screen off).
+  if (document.hidden) next = Math.max(next, POLL_HIDDEN_MS);
   pollTimer = setTimeout(poll, next);
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && !($('player').hidden && $('clock').hidden)) poll();
+  // Catch up when the page comes back, unless Spotify asked us to wait.
+  if (!document.hidden && !rateLimitDelay && !PAGES.every((p) => $(p).hidden)) poll();
 });
 
 // ---------- UI plumbing ----------
 let toastTimer = null;
-function showToast(msg) {
+function showToast(msg, ms = 6000) {
   const t = $('toast');
   t.textContent = msg;
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(hideToast, 6000);
+  toastTimer = setTimeout(hideToast, ms);
 }
 function hideToast() { $('toast').hidden = true; }
 
@@ -496,10 +527,10 @@ function showView() {
   $('login').hidden = !hasClient || hasToken;
   const ready = hasClient && hasToken;
   if (!ready) {
-    $('player').hidden = true;
-    $('clock').hidden = true;
+    for (const name of PAGES) $(name).hidden = true;
     Clock.stop();
     Weather.stop();
+    Light.stop();
   } else {
     showPage(page, false);
     poll();
@@ -550,17 +581,24 @@ function toggleFullscreen() {
 }
 
 // ---------- pages: now playing <-> clock ----------
+// The light page is added at startup when server.py's WiZ bridge answers.
 const PAGES = ['player', 'clock'];
-let page = PAGES.includes(store.get('page')) ? store.get('page') : 'player';
+let page = 'player';
 let pagerTimer = null;
+
+function addPage(name) {
+  PAGES.push(name);
+  $('pager').append(document.createElement('span'));
+}
 
 function showPage(name, announce = true) {
   page = name;
   store.set('page', name);
-  $('player').hidden = name !== 'player';
-  $('clock').hidden = name !== 'clock';
+  for (const p of PAGES) $(p).hidden = p !== name;
   if (name === 'clock') { Clock.start(); Weather.start(); }
   else { Clock.stop(); Weather.stop(); }
+  if (name === 'light') Light.start();
+  else Light.stop();
 
   // Page dots, briefly.
   const pager = $('pager');
@@ -622,6 +660,9 @@ const LONG_PRESS_MS = 550;
 const SWIPE_MIN_PX = 60;
 const MOVE_CANCEL_PX = 12;
 
+// Buttons, sliders and inputs keep their own behaviour.
+const isControl = (e) => !!e.target.closest('button, input, label, form, a');
+
 function addGestures(target, { onDoubleTap, onLongPress }) {
   let tapTimer = null;
   let pressTimer = null;
@@ -630,6 +671,7 @@ function addGestures(target, { onDoubleTap, onLongPress }) {
 
   target.addEventListener('pointerdown', (e) => {
     suppressClick = false;
+    if (isControl(e)) { start = null; clearTimeout(pressTimer); return; }
     start = { x: e.clientX, y: e.clientY };
     clearTimeout(pressTimer);
     if (onLongPress) {
@@ -656,7 +698,8 @@ function addGestures(target, { onDoubleTap, onLongPress }) {
     target.addEventListener(ev, () => { clearTimeout(pressTimer); start = null; }));
   target.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  target.addEventListener('click', () => {
+  target.addEventListener('click', (e) => {
+    if (isControl(e)) return;
     if (suppressClick) { suppressClick = false; return; }
     if (tapTimer) {
       clearTimeout(tapTimer);
@@ -692,10 +735,12 @@ function toggleClockColor() {
 applyClockColor(!!store.get('clock_mono'));
 
 addGestures($('clock'), { onDoubleTap: cycleClockStyle, onLongPress: toggleClockColor });
+addGestures($('light'), { onDoubleTap: () => Light.toggle() });
 
 // Keyboard: ←/→ switch page.
 document.addEventListener('keydown', (e) => {
-  if ($('player').hidden && $('clock').hidden) return;   // setup/login screens
+  if (PAGES.every((p) => $(p).hidden)) return;   // setup/login screens
+  if (e.target.closest('input')) return;         // sliders use the arrow keys
   if (e.key === 'ArrowRight') nextPage(1);
   else if (e.key === 'ArrowLeft') nextPage(-1);
   else return;
@@ -733,6 +778,8 @@ wakeCursor();
 setInterval(tick, 250);
 
 (async () => {
+  if (await Light.probe()) addPage('light');
+  if (PAGES.includes(store.get('page'))) page = store.get('page');
   try {
     await handleRedirect();
   } catch (e) {

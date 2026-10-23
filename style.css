@@ -23,6 +23,11 @@ html, body {
   touch-action: manipulation;
 }
 
+/* Pages: let the browser handle vertical scrolling (lyrics, light page) but
+   leave horizontal drags to the app, or touch swipes between pages get
+   cancelled (pointercancel) before they can be detected. */
+#player, #clock, #light { touch-action: pan-y; }
+
 /* Hide the pointer after a few idle seconds (desktop, TV remotes). */
 body.cursor-idle, body.cursor-idle * { cursor: none !important; }
 
@@ -477,3 +482,358 @@ body.lyrics-on #player { gap: 20px; }
   background: var(--faint);
 }
 .pager span.on { background: var(--fg); }
+
+/* ---------- light page (Philips WiZ via server.py) ---------- */
+.light-page {
+  --lt-rgb: 255, 190, 120;   /* set from the bulb's colour */
+  --lt-level: 0;             /* 0 when off, up to 1 at full brightness */
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
+  gap: 28px;
+  padding: max(24px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
+}
+.light-page::-webkit-scrollbar { display: none; }
+.lt-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+.lt-glow {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 80% 55% at 50% 22%, rgba(var(--lt-rgb), 0.35), transparent 70%);
+  opacity: var(--lt-level);
+  transition: opacity 0.5s ease, background 0.5s ease;
+  z-index: -1;
+}
+.lt-head { text-align: center; }
+.lt-name, .lt-name-form input {
+  font: inherit;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--fg);
+  text-align: center;
+}
+.lt-name {
+  border: 0;
+  background: none;
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+/* A small pencil hints that the name can be changed. */
+.lt-name::after {
+  content: "✎";
+  margin-left: 8px;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.lt-name-form input {
+  width: min(80vw, 320px);
+  padding: 2px 12px;
+  border: 1px solid var(--faint);
+  border-radius: 10px;
+  background: #111;
+  user-select: text;
+}
+.lt-status {
+  display: block;
+  margin: 6px auto 0;
+  min-height: 1.2em;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+/* Tap the status line for model, firmware, MAC, signal… */
+.lt-info {
+  margin: 12px auto 0;
+  width: min(80vw, 300px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lt-info-rows {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.lt-info-rows div { display: flex; justify-content: space-between; gap: 16px; }
+.lt-info-rows span:last-child { color: var(--fg); text-align: right; word-break: break-all; }
+.lt-status.err { color: #ff6b6b; }
+
+.lt-power {
+  flex-shrink: 0;
+  width: 120px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid var(--faint);
+  background: #0c0c0c;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  transition: background 0.4s ease, color 0.4s ease, box-shadow 0.4s ease, border-color 0.4s ease;
+}
+.lt-power svg {
+  width: 44px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.light-page.on .lt-power {
+  border-color: rgba(var(--lt-rgb), 0.9);
+  background: rgba(var(--lt-rgb), 0.18);
+  color: rgb(var(--lt-rgb));
+  box-shadow: 0 0 60px rgba(var(--lt-rgb), calc(0.55 * var(--lt-level)));
+}
+.lt-power:active { transform: scale(0.96); }
+
+.lt-controls, .lt-find {
+  width: min(100%, 440px);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.lt-controls > *, .lt-find > * { flex-shrink: 0; }
+.lt-slider {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  row-gap: 10px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.lt-slider output { color: var(--fg); font-variant-numeric: tabular-nums; }
+.lt-slider input { grid-column: 1 / -1; }
+
+.lt-slider input[type=range] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 40px;
+  border-radius: 20px;
+  background: linear-gradient(90deg, #1a1a1a, rgb(var(--lt-rgb)));
+  outline: none;
+  touch-action: pan-y;
+}
+.lt-slider input.lt-temp {
+  background: linear-gradient(90deg, var(--t-lo, rgb(255, 147, 44)), rgb(255, 228, 206), var(--t-hi, rgb(230, 238, 255)));
+}
+.lt-slider input.lt-hue {
+  background: linear-gradient(90deg, #f00, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00);
+}
+.lt-slider input.lt-sat {
+  background: linear-gradient(90deg, #fff, var(--hue, #f00));
+}
+.lt-slider input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.lt-slider input[type=range]::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid rgba(0, 0, 0, 0.35);
+}
+
+/* Mode tabs: White / Colour / Scenes / Glow */
+.lt-tabs {
+  display: flex;
+  padding: 4px;
+  border-radius: 999px;
+  background: #111;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.lt-tabs button {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+.lt-tabs button[aria-selected="true"] {
+  background: rgba(var(--lt-rgb), 0.22);
+  color: var(--fg);
+}
+.lt-pane { display: flex; flex-direction: column; gap: 18px; }
+.lt-hint { font-size: 13px; color: var(--muted); line-height: 1.45; text-align: center; }
+[data-pane="glow"] .lt-chips { justify-content: center; }
+
+/* Music sync switches */
+.lt-toggle {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #0c0c0c;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.lt-toggle span { flex: 1; display: grid; gap: 3px; }
+.lt-toggle b { font-size: 15px; font-weight: 600; }
+.lt-toggle small { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.lt-toggle input {
+  -webkit-appearance: none;
+  appearance: none;
+  flex-shrink: 0;
+  width: 50px;
+  height: 30px;
+  border-radius: 15px;
+  background: #2a2a2a;
+  position: relative;
+  transition: background 0.25s ease;
+}
+.lt-toggle input::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.25s ease;
+}
+.lt-toggle input:checked { background: rgb(var(--lt-rgb)); }
+.lt-toggle input:checked::after { transform: translateX(20px); }
+
+.lt-scenes {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+/* Only the favourites until "More scenes" (a playing extra stays visible). */
+.lt-scenes:not(.all) .extra:not(.sel) { display: none; }
+.lt-scene {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px 7px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0c0c0c;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+}
+.lt-scene i {
+  width: 18px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+}
+.lt-scene.sel {
+  border-color: rgb(var(--lt-rgb));
+  background: rgba(var(--lt-rgb), 0.14);
+  color: var(--fg);
+}
+/* 8 columns: colours are circles, whites are labelled pills two columns wide. */
+.lt-swatches {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 10px;
+}
+.lt-swatch {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  background: var(--sw);
+  color: rgba(0, 0, 0, 0.7);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+.lt-swatch.white { grid-column: span 2; aspect-ratio: auto; border-radius: 999px; padding: 9px 0; }
+.lt-swatch:active { transform: scale(0.9); }
+
+.lt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lt-chip {
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--faint);
+  background: #0c0c0c;
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+}
+.lt-chip.sel {
+  border-color: rgb(var(--lt-rgb));
+  background: rgba(var(--lt-rgb), 0.18);
+}
+.lt-link {
+  align-self: center;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  padding: 6px;
+}
+.lt-find p { color: var(--muted); line-height: 1.45; text-align: center; }
+.lt-find .lt-chip { align-self: center; }
+.lt-ip-form { display: flex; gap: 8px; }
+.lt-ip-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--faint);
+  background: #111;
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  user-select: text;
+}
+
+/* Phone landscape: name and power stay put on the left; only the controls
+   on the right scroll. */
+@media (orientation: landscape) and (max-height: 600px) {
+  .light-page {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) minmax(0, 460px);
+    grid-template-rows: 100%;
+    justify-content: center;
+    column-gap: 40px;
+    overflow: hidden;
+    padding: 0 max(24px, env(safe-area-inset-right)) 0 max(24px, env(safe-area-inset-left));
+  }
+  .lt-side { align-self: center; gap: 20px; }
+  .lt-power { width: 104px; }
+  .lt-controls, .lt-find {
+    height: 100%;
+    overflow-y: auto;
+    scrollbar-width: none;
+    justify-content: safe center;
+    padding: 20px 2px;
+    gap: 16px;
+  }
+  .lt-controls::-webkit-scrollbar, .lt-find::-webkit-scrollbar { display: none; }
+}
